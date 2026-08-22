@@ -1,6 +1,8 @@
 const recordButton = document.getElementById('recordButton');
 const clearButton = document.getElementById('clearButton');
 const playButton = document.getElementById('playButton');
+const addTrackButton = document.getElementById('addTrackButton');
+const trackList = document.getElementById('trackList');
 const buttonLabel = document.getElementById('buttonLabel');
 const recordIcon = document.getElementById('recordIcon');
 const countdownFill = document.getElementById('countdownFill');
@@ -14,35 +16,65 @@ const progressBar = document.getElementById('progressBar');
 
 let mediaRecorder;
 let audioChunks = [];
-let audio;
-let loopUrl;
 let pendingStream;
 let audioContext;
-let audioBuffer;
-let sourceNode;
-let playbackOffset = 0;
+let tracks = [];
+let sourceNodes = [];
+let gainNodes = [];
+let loopPosition = 0;
 let playbackStartedAt = 0;
-let startedAt = 0;
+let recordingStartedAt = 0;
+let recordingMode = 'base';
 let loopDuration = 0;
 let timerId;
 let countdownTimerId;
 let isCountingDown = false;
+let isPlaying = false;
 
 function formatTime(seconds) {
   const safeSeconds = Math.max(0, Math.floor(seconds));
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`;
 }
 
-function updateTimer() {
-  if (!startedAt) return;
-  const elapsed = (performance.now() - startedAt) / 1000;
-  timeDisplay.textContent = formatTime(elapsed);
-  timerId = requestAnimationFrame(updateTimer);
+function getLoopPosition() {
+  if (!isPlaying || !loopDuration) return loopPosition;
+  return (audioContext.currentTime - playbackStartedAt + loopPosition) % loopDuration;
 }
 
-function stopTimer() {
+function updateProgress() {
+  if (!loopDuration) return;
+  progressBar.style.width = `${(getLoopPosition() / loopDuration) * 100}%`;
+  if (isPlaying) timerId = requestAnimationFrame(updateProgress);
+}
+
+function stopProgress() {
   cancelAnimationFrame(timerId);
   timerId = null;
+}
+
+function stopSources() {
+  sourceNodes.forEach(source => { try { source.stop(); } catch {} });
+  sourceNodes = [];
+  gainNodes = [];
+}
+
+function startSources(position = getLoopPosition()) {
+  if (!audioContext || !loopDuration || !tracks.length) return;
+  stopSources();
+  const startAt = audioContext.currentTime + 0.03;
+  playbackStartedAt = startAt;
+  loopPosition = position % loopDuration;
+  tracks.forEach(track => {
+    const source = audioContext.createBufferSource();
+    const gain = audioContext.createGain();
+    source.buffer = track.audioBuffer;
+    source.loop = true;
+    gain.gain.value = track.muted ? 0 : track.volume;
+    source.connect(gain).connect(audioContext.destination);
+    source.start(startAt, loopPosition);
+    sourceNodes.push(source);
+    gainNodes.push(gain);
+  });
 }
 
 function setState(state, message) {
@@ -52,46 +84,46 @@ function setState(state, message) {
 }
 
 async function startRecording() {
-  if (isCountingDown) return;
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+  if (isCountingDown || mediaRecorder?.state === 'recording') return;
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.AudioContext) {
     setState('ERROR', 'This browser cannot record audio');
     return;
   }
-
+  recordingMode = tracks.length ? 'overdub' : 'base';
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    });
-    pendingStream = stream;
+    pendingStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     isCountingDown = true;
     recordButton.classList.add('is-counting-down');
-    setState('WAITING', 'Recording starts in 2 seconds');
+    setState('WAITING', recordingMode === 'base' ? 'Recording starts in 2 seconds' : 'Syncing to next loop');
     buttonLabel.textContent = 'GET READY';
     countdownFill.style.width = '0%';
     await new Promise(resolve => { countdownTimerId = setTimeout(resolve, 2000); });
+    if (!isCountingDown) return;
+    if (recordingMode === 'overdub') {
+      if (!isPlaying) await playLoop();
+      const wait = (loopDuration - getLoopPosition()) * 1000;
+      setState('WAITING', 'Starting on the beat');
+      await new Promise(resolve => { countdownTimerId = setTimeout(resolve, wait); });
+      if (!isCountingDown) return;
+    }
     isCountingDown = false;
-    pendingStream = null;
     recordButton.classList.remove('is-counting-down');
     countdownFill.style.width = '0%';
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
-    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    mediaRecorder = new MediaRecorder(pendingStream, mimeType ? { mimeType } : undefined);
+    pendingStream = null;
     audioChunks = [];
     mediaRecorder.addEventListener('dataavailable', event => {
       if (event.data.size > 0) audioChunks.push(event.data);
     });
     mediaRecorder.addEventListener('stop', finishRecording, { once: true });
     mediaRecorder.start();
-    startedAt = performance.now();
+    recordingStartedAt = performance.now();
     recordButton.classList.add('is-recording');
     recordIcon.classList.add('is-stop');
     buttonLabel.innerHTML = 'TAP TO<br>STOP';
     recordButton.setAttribute('aria-label', '録音を停止');
-    setState('RECORDING', 'Capturing your take');
-    updateTimer();
+    setState('RECORDING', recordingMode === 'base' ? 'Capturing rhythm' : 'Capturing new layer');
   } catch (error) {
     pendingStream?.getTracks().forEach(track => track.stop());
     pendingStream = null;
@@ -100,6 +132,7 @@ async function startRecording() {
     recordButton.classList.remove('is-counting-down');
     countdownFill.style.width = '0%';
     setState('ERROR', error.name === 'NotAllowedError' ? 'Allow microphone access to record' : 'Microphone unavailable');
+    renderTracks();
   }
 }
 
@@ -111,13 +144,14 @@ function stopRecording() {
     isCountingDown = false;
     recordButton.classList.remove('is-counting-down');
     countdownFill.style.width = '0%';
-    buttonLabel.innerHTML = 'TAP TO<br>RECORD';
+    buttonLabel.innerHTML = tracks.length ? 'TAP TO<br>ADD TRACK' : 'TAP TO<br>RECORD';
     setState('READY', 'Microphone ready');
+    renderTracks();
     return;
   }
   if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
-  loopDuration = (performance.now() - startedAt) / 1000;
-  stopTimer();
+  const capturedDuration = (performance.now() - recordingStartedAt) / 1000;
+  if (recordingMode === 'base') loopDuration = capturedDuration;
   mediaRecorder.stream.getTracks().forEach(track => track.stop());
   mediaRecorder.stop();
   recordButton.classList.remove('is-recording');
@@ -128,116 +162,76 @@ function stopRecording() {
 
 async function finishRecording() {
   const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-  sourceNode?.stop();
-  sourceNode = null;
-  playbackOffset = 0;
-  if (loopUrl) URL.revokeObjectURL(loopUrl);
-  loopUrl = URL.createObjectURL(blob);
-  audio = new Audio(loopUrl);
-  audio.loop = true;
   try {
     audioContext ||= new AudioContext();
     const decodedBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
-    audioBuffer = trimAudioBuffer(decodedBuffer, loopDuration);
+    const frameCount = Math.max(1, Math.floor(loopDuration * decodedBuffer.sampleRate));
+    const buffer = audioContext.createBuffer(decodedBuffer.numberOfChannels, frameCount, decodedBuffer.sampleRate);
+    for (let channel = 0; channel < decodedBuffer.numberOfChannels; channel += 1) {
+      buffer.copyToChannel(decodedBuffer.getChannelData(channel).subarray(0, frameCount), channel);
+    }
+    tracks.push({ id: Date.now(), name: recordingMode === 'base' ? 'RHYTHM' : `TRACK ${String(tracks.length + 1).padStart(2, '0')}`, audioBuffer: buffer, volume: 1, muted: false });
+    loopPosition = 0;
+    renderTracks();
+    buttonLabel.innerHTML = 'TAP TO<br>ADD TRACK';
+    recordButton.setAttribute('aria-label', 'トラックを追加');
+    await playLoop();
   } catch {
-    audioBuffer = null;
+    setState('ERROR', 'Could not prepare this track');
+    buttonLabel.innerHTML = 'TAP TO<br>RECORD';
   }
-  trackName.textContent = `LOOP 01 / ${formatTime(loopDuration)}`;
+}
+
+function renderTracks() {
+  trackList.innerHTML = tracks.map((track, index) => `<div class="track-row${track.muted ? ' is-muted' : ''}" data-track-id="${track.id}"><span class="track-number">${String(index + 1).padStart(2, '0')}</span><span class="track-title">${track.name}</span><span class="track-length">${formatTime(loopDuration)}</span><button class="track-mute" type="button" data-action="mute">${track.muted ? 'MUTED' : 'LIVE'}</button><button class="track-delete" type="button" data-action="delete" aria-label="Delete ${track.name}">×</button></div>`).join('');
+  trackName.textContent = tracks.length ? `${tracks.length} TRACK${tracks.length === 1 ? '' : 'S'} / ${formatTime(loopDuration)}` : 'NO LOOP CAPTURED';
   timeDisplay.textContent = formatTime(loopDuration);
-  clearButton.disabled = false;
-  playButton.disabled = false;
-  buttonLabel.innerHTML = 'TAP TO<br>REPLACE';
-  recordButton.setAttribute('aria-label', '録音をやり直す');
-  setState('LOOPING', 'Your loop is ready');
-  playLoop();
+  clearButton.disabled = !tracks.length;
+  playButton.disabled = !tracks.length;
+  addTrackButton.disabled = !tracks.length || isCountingDown || mediaRecorder?.state === 'recording';
 }
 
-function setPlayingState(isPlaying) {
-  playButton.classList.toggle('is-playing', isPlaying);
-  playIcon.textContent = isPlaying ? 'Ⅱ' : '▶';
-  playLabel.textContent = isPlaying ? 'PAUSE' : 'PLAY';
-  if (isPlaying) setState('LOOPING', 'Loop is playing');
-  else setState('PAUSED', 'Loop paused');
-}
-
-function trimAudioBuffer(buffer, duration) {
-  const frameCount = Math.min(buffer.length, Math.floor(duration * buffer.sampleRate));
-  const trimmedBuffer = audioContext.createBuffer(buffer.numberOfChannels, frameCount, buffer.sampleRate);
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    trimmedBuffer.copyToChannel(buffer.getChannelData(channel).subarray(0, frameCount), channel);
-  }
-  return trimmedBuffer;
-}
-
-function playLoop() {
-  if (audioBuffer) {
-    audioContext.resume();
-    sourceNode?.stop();
-    sourceNode = audioContext.createBufferSource();
-    sourceNode.buffer = audioBuffer;
-    sourceNode.loop = true;
-    sourceNode.connect(audioContext.destination);
-    playbackStartedAt = audioContext.currentTime;
-    sourceNode.start(0, playbackOffset % audioBuffer.duration);
-    setPlayingState(true);
-    updateProgress();
+function deleteTrack(id) {
+  tracks = tracks.filter(track => track.id !== id);
+  if (!tracks.length) {
+    clearLoop();
     return;
   }
-  audio?.play().then(() => setPlayingState(true)).catch(() => setPlayingState(false));
-}
-
-function pauseLoop() {
-  if (audioBuffer && sourceNode) {
-    playbackOffset = (audioContext.currentTime - playbackStartedAt + playbackOffset) % audioBuffer.duration;
-    sourceNode.stop();
-    sourceNode = null;
-    setPlayingState(false);
-    return;
-  }
-  audio?.pause();
-  setPlayingState(false);
-}
-
-function updateProgress() {
-  if (audioBuffer) {
-    const currentTime = sourceNode
-      ? (audioContext.currentTime - playbackStartedAt + playbackOffset) % audioBuffer.duration
-      : playbackOffset;
-    progressBar.style.width = `${(currentTime / audioBuffer.duration) * 100}%`;
-    if (sourceNode) requestAnimationFrame(updateProgress);
-    return;
-  }
-  if (audio?.duration) progressBar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+  if (isPlaying) startSources(getLoopPosition());
+  renderTracks();
 }
 
 function clearLoop() {
   pauseLoop();
-  sourceNode = null;
-  audioBuffer = null;
-  playbackOffset = 0;
-  if (loopUrl) URL.revokeObjectURL(loopUrl);
-  audio = null;
-  loopUrl = null;
+  tracks = [];
   loopDuration = 0;
-  startedAt = 0;
-  stopTimer();
-  timeDisplay.textContent = '00:00';
-  trackName.textContent = 'NO LOOP CAPTURED';
+  loopPosition = 0;
   progressBar.style.width = '0%';
-  clearButton.disabled = true;
-  playButton.disabled = true;
+  timeDisplay.textContent = '00:00';
   buttonLabel.innerHTML = 'TAP TO<br>RECORD';
   recordButton.setAttribute('aria-label', '録音を開始');
   setState('READY', 'Microphone ready');
+  renderTracks();
 }
 
 recordButton.addEventListener('click', () => {
-  if (mediaRecorder?.state === 'recording') stopRecording();
+  if (mediaRecorder?.state === 'recording' || isCountingDown) stopRecording();
   else startRecording();
 });
-playButton.addEventListener('click', () => {
-  if (!audio) return;
-  if (sourceNode || !audio.paused) pauseLoop();
-  else playLoop();
-});
+addTrackButton.addEventListener('click', startRecording);
+playButton.addEventListener('click', () => { if (isPlaying) pauseLoop(); else playLoop(); });
 clearButton.addEventListener('click', clearLoop);
+trackList.addEventListener('click', event => {
+  const button = event.target.closest('button');
+  const row = event.target.closest('.track-row');
+  if (!button || !row) return;
+  const track = tracks.find(item => item.id === Number(row.dataset.trackId));
+  if (!track) return;
+  if (button.dataset.action === 'mute') {
+    track.muted = !track.muted;
+    renderTracks();
+    if (isPlaying) startSources(getLoopPosition());
+  } else if (button.dataset.action === 'delete') deleteTrack(track.id);
+});
+
+renderTracks();
