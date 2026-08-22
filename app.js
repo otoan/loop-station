@@ -137,7 +137,8 @@ async function finishRecording() {
   audio.loop = true;
   try {
     audioContext ||= new AudioContext();
-    audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    const decodedBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    audioBuffer = trimAudioBuffer(decodedBuffer, loopDuration);
   } catch {
     audioBuffer = null;
   }
@@ -157,6 +158,15 @@ function setPlayingState(isPlaying) {
   playLabel.textContent = isPlaying ? 'PAUSE' : 'PLAY';
   if (isPlaying) setState('LOOPING', 'Loop is playing');
   else setState('PAUSED', 'Loop paused');
+}
+
+function trimAudioBuffer(buffer, duration) {
+  const frameCount = Math.min(buffer.length, Math.floor(duration * buffer.sampleRate));
+  const trimmedBuffer = audioContext.createBuffer(buffer.numberOfChannels, frameCount, buffer.sampleRate);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    trimmedBuffer.copyToChannel(buffer.getChannelData(channel).subarray(0, frameCount), channel);
+  }
+  return trimmedBuffer;
 }
 
 function playLoop() {
