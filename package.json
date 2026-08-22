@@ -1,0 +1,9 @@
+{
+  "name": "loop-station",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A browser-based tap-to-record looper",
+  "scripts": {
+    "start": "npx serve ."
+  }
+}

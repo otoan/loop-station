@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101315">
+  <meta name="description" content="Tap, record, and build your loop.">
+  <title>Loop Station</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">LS</span><span>LOOP STATION</span></div>
+      <div class="live-state"><span class="live-dot"></span><span id="stateLabel">READY</span></div>
+    </header>
+
+    <section class="hero" aria-labelledby="pageTitle">
+      <p class="eyebrow">ONE TAKE / INFINITE REPEAT</p>
+      <h1 id="pageTitle">Build your<br><em>own</em> rhythm.</h1>
+      <p class="intro">Tap once to capture an idea.<br>Tap again and let it roll.</p>
+    </section>
+
+    <section class="looper-panel" aria-label="ルーパー操作">
+      <div class="meter-row"><span id="trackName">NO LOOP CAPTURED</span><span id="timeDisplay">00:00</span></div>
+      <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+
+      <button id="recordButton" class="record-button" type="button" aria-label="録音を開始">
+        <span class="button-ring"></span><span id="recordIcon" class="record-icon"></span>
+        <span id="buttonLabel" class="button-label">TAP TO<br>RECORD</span>
+      </button>
+
+      <div class="control-row">
+        <button id="clearButton" class="utility-button" type="button" disabled><span class="utility-icon">×</span><span>CLEAR</span></button>
+        <div class="recording-note"><span class="pulse"></span><span id="hint">Microphone ready</span></div>
+        <button id="playButton" class="utility-button" type="button" disabled><span id="playIcon" class="play-icon">▶</span><span id="playLabel">PLAY</span></button>
+      </div>
+    </section>
+
+    <footer class="footer"><span>LOCAL AUDIO</span><span>•</span><span>NO UPLOAD</span><span>•</span><span>MADE TO PLAY</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

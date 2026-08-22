@@ -1,0 +1,9 @@
+{
+  "name": "Loop Station",
+  "short_name": "Loop Station",
+  "description": "Tap, record, and build your loop.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101315",
+  "theme_color": "#101315"
+}
