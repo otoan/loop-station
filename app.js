@@ -17,6 +17,7 @@ const progressBar = document.getElementById('progressBar');
 let mediaRecorder;
 let audioChunks = [];
 let pendingStream;
+let recordingStream;
 let audioContext;
 let tracks = [];
 let sourceNodes = [];
@@ -30,6 +31,11 @@ let timerId;
 let countdownTimerId;
 let isCountingDown = false;
 let isPlaying = false;
+
+function createAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  return AudioContextClass ? new AudioContextClass() : null;
+}
 
 function formatTime(seconds) {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -77,6 +83,32 @@ function startSources(position = getLoopPosition()) {
   });
 }
 
+async function playLoop() {
+  if (!tracks.length) return;
+  audioContext ||= createAudioContext();
+  if (!audioContext) return;
+  await audioContext.resume();
+  isPlaying = true;
+  startSources(loopPosition);
+  playButton.classList.add('is-playing');
+  playIcon.textContent = 'Ⅱ';
+  playLabel.textContent = 'PAUSE';
+  setState('LOOPING', 'Loop is playing');
+  updateProgress();
+}
+
+function pauseLoop() {
+  if (!isPlaying) return;
+  loopPosition = getLoopPosition();
+  isPlaying = false;
+  stopSources();
+  stopProgress();
+  playButton.classList.remove('is-playing');
+  playIcon.textContent = '▶';
+  playLabel.textContent = 'PLAY';
+  setState('PAUSED', 'Loop paused');
+}
+
 function setState(state, message) {
   stateLabel.textContent = state;
   hint.textContent = message;
@@ -85,7 +117,7 @@ function setState(state, message) {
 
 async function startRecording() {
   if (isCountingDown || mediaRecorder?.state === 'recording') return;
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.AudioContext) {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !(window.AudioContext || window.webkitAudioContext)) {
     setState('ERROR', 'This browser cannot record audio');
     return;
   }
@@ -110,7 +142,8 @@ async function startRecording() {
     recordButton.classList.remove('is-counting-down');
     countdownFill.style.width = '0%';
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
-    mediaRecorder = new MediaRecorder(pendingStream, mimeType ? { mimeType } : undefined);
+    recordingStream = pendingStream;
+    mediaRecorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
     pendingStream = null;
     audioChunks = [];
     mediaRecorder.addEventListener('dataavailable', event => {
@@ -152,7 +185,6 @@ function stopRecording() {
   if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
   const capturedDuration = (performance.now() - recordingStartedAt) / 1000;
   if (recordingMode === 'base') loopDuration = capturedDuration;
-  mediaRecorder.stream.getTracks().forEach(track => track.stop());
   mediaRecorder.stop();
   recordButton.classList.remove('is-recording');
   recordIcon.classList.remove('is-stop');
@@ -162,8 +194,10 @@ function stopRecording() {
 
 async function finishRecording() {
   const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  recordingStream?.getTracks().forEach(track => track.stop());
+  recordingStream = null;
   try {
-    audioContext ||= new AudioContext();
+    audioContext ||= createAudioContext();
     const decodedBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
     const frameCount = Math.max(1, Math.floor(loopDuration * decodedBuffer.sampleRate));
     const buffer = audioContext.createBuffer(decodedBuffer.numberOfChannels, frameCount, decodedBuffer.sampleRate);
@@ -178,7 +212,8 @@ async function finishRecording() {
     await playLoop();
   } catch {
     setState('ERROR', 'Could not prepare this track');
-    buttonLabel.innerHTML = 'TAP TO<br>RECORD';
+    buttonLabel.innerHTML = tracks.length ? 'TAP TO<br>ADD TRACK' : 'TAP TO<br>RECORD';
+    renderTracks();
   }
 }
 
