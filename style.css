@@ -21,7 +21,7 @@ h1 em { color: var(--accent); font-style: normal; }
 .meter-row { display: flex; justify-content: space-between; font: 11px 'DM Mono', monospace; letter-spacing: .1em; color: var(--muted); }
 .progress-track { width: 100%; height: 3px; background: var(--line); margin-top: 13px; overflow: hidden; }
 .progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .1s linear; }
-.record-button { --countdown-progress: 0%; position: relative; display: grid; place-items: center; width: min(54vw, 310px); aspect-ratio: 1; margin: 58px auto 48px; border: 1px solid #47534b; border-radius: 50%; background: #171d19; cursor: pointer; transition: transform .2s, border-color .2s, background .2s; }
+.record-button { position: relative; display: grid; place-items: center; width: min(54vw, 310px); aspect-ratio: 1; margin: 58px auto 48px; border: 1px solid #47534b; border-radius: 50%; background: #171d19; cursor: pointer; transition: transform .2s, border-color .2s, background .2s; }
 .record-button:hover { transform: scale(1.025); border-color: var(--accent); }
 .record-button:active { transform: scale(.98); }
 .button-ring { position: absolute; inset: 10px; border: 1px solid #303b34; border-radius: 50%; }
@@ -29,7 +29,11 @@ h1 em { color: var(--accent); font-style: normal; }
 .record-icon.is-stop { border-radius: 2px; width: 20px; height: 20px; }
 .button-label { margin-top: 72px; color: var(--ink); font: 500 11px/1.4 'DM Mono', monospace; letter-spacing: .14em; text-align: center; }
 .is-recording { border-color: var(--hot); background: #211918; animation: breathe 1.6s infinite; }
-.is-counting-down { border-color: var(--accent); background: conic-gradient(var(--accent) var(--countdown-progress), #171d19 var(--countdown-progress)); transition: background 1s linear, border-color .2s; }
+.countdown-bar { position: absolute; top: 50%; left: 18%; width: 64%; height: 4px; overflow: hidden; border-radius: 4px; background: #303b34; opacity: 0; transform: translateY(-50%); }
+.countdown-bar span { display: block; width: 0; height: 100%; background: var(--accent); }
+.is-counting-down { border-color: var(--accent); }
+.is-counting-down .countdown-bar { opacity: 1; }
+.is-counting-down #countdownFill { animation: countdown-fill 2s linear forwards; }
 .is-counting-down .button-ring { border-color: #101315; }
 .is-counting-down .record-icon { background: var(--accent); box-shadow: 0 0 0 8px #d8f36a1c; }
 .control-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
@@ -44,4 +48,5 @@ h1 em { color: var(--accent); font-style: normal; }
 [data-state="recording"] .live-dot, [data-state="saving"] .live-dot { background: var(--hot); }
 @keyframes blink { 50% { opacity: .25; } }
 @keyframes breathe { 50% { box-shadow: 0 0 0 13px #ff725c10; } }
+@keyframes countdown-fill { to { width: 100%; } }
 @media (max-width: 540px) { .app-shell { width: min(100% - 28px, 980px); padding-top: 18px; } .hero { padding-top: 65px; } .record-button { margin-top: 50px; } .recording-note { font-size: 10px; } .footer { font-size: 8px; gap: 8px; } }

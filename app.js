@@ -3,6 +3,7 @@ const clearButton = document.getElementById('clearButton');
 const playButton = document.getElementById('playButton');
 const buttonLabel = document.getElementById('buttonLabel');
 const recordIcon = document.getElementById('recordIcon');
+const countdownFill = document.getElementById('countdownFill');
 const playIcon = document.getElementById('playIcon');
 const playLabel = document.getElementById('playLabel');
 const stateLabel = document.getElementById('stateLabel');
@@ -16,6 +17,11 @@ let audioChunks = [];
 let audio;
 let loopUrl;
 let pendingStream;
+let audioContext;
+let audioBuffer;
+let sourceNode;
+let playbackOffset = 0;
+let playbackStartedAt = 0;
 let startedAt = 0;
 let loopDuration = 0;
 let timerId;
@@ -64,24 +70,13 @@ async function startRecording() {
     isCountingDown = true;
     recordButton.classList.add('is-counting-down');
     setState('WAITING', 'Recording starts in 2 seconds');
-    await new Promise(resolve => {
-      let remaining = 2;
-      const updateCountdown = () => {
-        recordButton.style.setProperty('--countdown-progress', `${((2 - remaining) / 2) * 100}%`);
-        buttonLabel.innerHTML = `${remaining}<br>GET READY`;
-        if (remaining === 0) {
-          setTimeout(resolve, 100);
-          return;
-        }
-        remaining -= 1;
-        countdownTimerId = setTimeout(updateCountdown, 1000);
-      };
-      updateCountdown();
-    });
+    buttonLabel.textContent = 'GET READY';
+    countdownFill.style.width = '0%';
+    await new Promise(resolve => { countdownTimerId = setTimeout(resolve, 2000); });
     isCountingDown = false;
     pendingStream = null;
     recordButton.classList.remove('is-counting-down');
-    recordButton.style.removeProperty('--countdown-progress');
+    countdownFill.style.width = '0%';
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
     mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     audioChunks = [];
@@ -103,7 +98,7 @@ async function startRecording() {
     isCountingDown = false;
     clearTimeout(countdownTimerId);
     recordButton.classList.remove('is-counting-down');
-    recordButton.style.removeProperty('--countdown-progress');
+    countdownFill.style.width = '0%';
     setState('ERROR', error.name === 'NotAllowedError' ? 'Allow microphone access to record' : 'Microphone unavailable');
   }
 }
@@ -115,7 +110,7 @@ function stopRecording() {
     clearTimeout(countdownTimerId);
     isCountingDown = false;
     recordButton.classList.remove('is-counting-down');
-    recordButton.style.removeProperty('--countdown-progress');
+    countdownFill.style.width = '0%';
     buttonLabel.innerHTML = 'TAP TO<br>RECORD';
     setState('READY', 'Microphone ready');
     return;
@@ -131,15 +126,21 @@ function stopRecording() {
   setState('SAVING', 'Preparing your loop');
 }
 
-function finishRecording() {
+async function finishRecording() {
   const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  sourceNode?.stop();
+  sourceNode = null;
+  playbackOffset = 0;
   if (loopUrl) URL.revokeObjectURL(loopUrl);
   loopUrl = URL.createObjectURL(blob);
   audio = new Audio(loopUrl);
   audio.loop = true;
-  audio.addEventListener('timeupdate', updateProgress);
-  audio.addEventListener('play', () => setPlayingState(true));
-  audio.addEventListener('pause', () => setPlayingState(false));
+  try {
+    audioContext ||= new AudioContext();
+    audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+  } catch {
+    audioBuffer = null;
+  }
   trackName.textContent = `LOOP 01 / ${formatTime(loopDuration)}`;
   timeDisplay.textContent = formatTime(loopDuration);
   clearButton.disabled = false;
@@ -147,7 +148,7 @@ function finishRecording() {
   buttonLabel.innerHTML = 'TAP TO<br>REPLACE';
   recordButton.setAttribute('aria-label', '録音をやり直す');
   setState('LOOPING', 'Your loop is ready');
-  audio.play().catch(() => setPlayingState(false));
+  playLoop();
 }
 
 function setPlayingState(isPlaying) {
@@ -158,13 +159,52 @@ function setPlayingState(isPlaying) {
   else setState('PAUSED', 'Loop paused');
 }
 
+function playLoop() {
+  if (audioBuffer) {
+    audioContext.resume();
+    sourceNode?.stop();
+    sourceNode = audioContext.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.loop = true;
+    sourceNode.connect(audioContext.destination);
+    playbackStartedAt = audioContext.currentTime;
+    sourceNode.start(0, playbackOffset % audioBuffer.duration);
+    setPlayingState(true);
+    updateProgress();
+    return;
+  }
+  audio?.play().then(() => setPlayingState(true)).catch(() => setPlayingState(false));
+}
+
+function pauseLoop() {
+  if (audioBuffer && sourceNode) {
+    playbackOffset = (audioContext.currentTime - playbackStartedAt + playbackOffset) % audioBuffer.duration;
+    sourceNode.stop();
+    sourceNode = null;
+    setPlayingState(false);
+    return;
+  }
+  audio?.pause();
+  setPlayingState(false);
+}
+
 function updateProgress() {
-  if (!audio || !audio.duration) return;
-  progressBar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+  if (audioBuffer) {
+    const currentTime = sourceNode
+      ? (audioContext.currentTime - playbackStartedAt + playbackOffset) % audioBuffer.duration
+      : playbackOffset;
+    progressBar.style.width = `${(currentTime / audioBuffer.duration) * 100}%`;
+    if (sourceNode) requestAnimationFrame(updateProgress);
+    return;
+  }
+  if (audio?.duration) progressBar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
 }
 
 function clearLoop() {
-  if (audio) audio.pause();
+  pauseLoop();
+  sourceNode = null;
+  audioBuffer = null;
+  playbackOffset = 0;
   if (loopUrl) URL.revokeObjectURL(loopUrl);
   audio = null;
   loopUrl = null;
@@ -187,7 +227,7 @@ recordButton.addEventListener('click', () => {
 });
 playButton.addEventListener('click', () => {
   if (!audio) return;
-  if (audio.paused) audio.play();
-  else audio.pause();
+  if (sourceNode || !audio.paused) pauseLoop();
+  else playLoop();
 });
 clearButton.addEventListener('click', clearLoop);
