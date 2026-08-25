@@ -17,6 +17,8 @@ const progressBar = document.getElementById('progressBar');
 
 let mediaRecorder;
 let audioChunks = [];
+let previewAudio;
+let previewUrl;
 let pendingStream;
 let recordingStream;
 let audioContext;
@@ -191,14 +193,18 @@ function stopRecording() {
   mediaRecorder.stop();
   recordButton.classList.remove('is-recording');
   recordIcon.classList.remove('is-stop');
-  buttonLabel.innerHTML = 'SAVING<br>LOOP';
-  setState('SAVING', 'Preparing your loop');
+  buttonLabel.innerHTML = 'PLAYING<br>LOOP';
+  setState('LOOPING', 'Playing your loop');
 }
 
 async function finishRecording() {
   const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
   recordingStream?.getTracks().forEach(track => track.stop());
   recordingStream = null;
+  previewUrl = URL.createObjectURL(blob);
+  previewAudio = new Audio(previewUrl);
+  previewAudio.loop = true;
+  previewAudio.play().catch(() => {});
   try {
     audioContext ||= createAudioContext();
     const decodedBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
@@ -208,6 +214,10 @@ async function finishRecording() {
       buffer.copyToChannel(decodedBuffer.getChannelData(channel).subarray(0, frameCount), channel);
     }
     tracks.push({ id: Date.now(), name: recordingMode === 'base' ? 'RHYTHM' : `TRACK ${String(tracks.length + 1).padStart(2, '0')}`, audioBuffer: buffer, volume: 1, muted: false });
+    previewAudio.pause();
+    previewAudio = null;
+    URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
     loopPosition = 0;
     renderTracks();
     buttonLabel.innerHTML = 'TAP TO<br>ADD TRACK';
@@ -241,6 +251,10 @@ function deleteTrack(id) {
 
 function clearLoop() {
   pauseLoop();
+  previewAudio?.pause();
+  previewAudio = null;
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
   tracks = [];
   loopDuration = 0;
   loopPosition = 0;
