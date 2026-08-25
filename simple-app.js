@@ -16,10 +16,15 @@ let chunks = [];
 let stream;
 let audio;
 let audioUrl;
+let audioContext;
+let audioBuffer;
+let source;
 let startedAt = 0;
 let duration = 0;
 let playing = false;
 let playbackGeneration = 0;
+let playOffset = 0;
+let playStartedAt = 0;
 
 function setState(state, message) {
   stateLabel.textContent = state;
@@ -33,18 +38,52 @@ function formatTime(seconds) {
 }
 
 function currentPosition() {
-  return audio?.currentTime || 0;
+  if (audioBuffer && playing) {
+    return (audioContext.currentTime - playStartedAt + playOffset) % audioBuffer.duration;
+  }
+  return audio?.currentTime || playOffset;
 }
 
 function updateProgress() {
-  if (!audio || !duration) return;
-  progressBar.style.width = `${(audio.currentTime / duration) * 100}%`;
-  timeDisplay.textContent = formatTime(audio.currentTime);
+  if (!duration) return;
+  const position = currentPosition();
+  progressBar.style.width = `${(position / duration) * 100}%`;
+  timeDisplay.textContent = formatTime(position);
 }
 
-function playLoop() {
+function stopSource() {
+  if (!source) return;
+  try { source.stop(); } catch {}
+  source = null;
+}
+
+async function playLoop() {
   if (!audio) return;
   const generation = playbackGeneration;
+  if (audioBuffer) {
+    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    await audioContext.resume();
+    if (!audio || generation !== playbackGeneration) return;
+    stopSource();
+    source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.loop = true;
+    source.connect(audioContext.destination);
+    playStartedAt = audioContext.currentTime;
+    source.start(0, playOffset % audioBuffer.duration);
+    playing = true;
+    playButton.classList.add('is-playing');
+    playIcon.textContent = 'Ⅱ';
+    playLabel.textContent = 'PAUSE';
+    setState('LOOPING', 'Loop is playing');
+    updateProgress();
+    requestAnimationFrame(function refreshProgress() {
+      if (!playing || !audioBuffer) return;
+      updateProgress();
+      requestAnimationFrame(refreshProgress);
+    });
+    return;
+  }
   audio.play().then(() => {
     if (!audio || generation !== playbackGeneration) return;
     playing = true;
@@ -57,6 +96,11 @@ function playLoop() {
 
 function pauseLoop() {
   if (!audio) return;
+  if (audioBuffer && playing) {
+    playOffset = currentPosition();
+    playing = false;
+    stopSource();
+  }
   audio.pause();
   playing = false;
   playButton.classList.remove('is-playing');
@@ -105,6 +149,8 @@ async function finishRecording() {
   stream?.getTracks().forEach(track => track.stop());
   stream = null;
   const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+  playbackGeneration += 1;
+  stopSource();
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audioUrl = URL.createObjectURL(blob);
   audio = new Audio(audioUrl);
@@ -112,13 +158,23 @@ async function finishRecording() {
   audio.addEventListener('timeupdate', updateProgress);
   audio.addEventListener('play', () => { playing = true; });
   audio.addEventListener('pause', () => { playing = false; });
+  audio.play().catch(() => {});
   trackName.textContent = `LOOP 01 / ${formatTime(duration)}`;
   timeDisplay.textContent = formatTime(duration);
   clearButton.disabled = false;
   playButton.disabled = false;
   buttonLabel.innerHTML = 'TAP TO<br>RECORD AGAIN';
   recordButton.setAttribute('aria-label', '録音をやり直す');
-  playLoop();
+  try {
+    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    duration = audioBuffer.duration;
+    audio.pause();
+    playOffset = 0;
+    await playLoop();
+  } catch {
+    setState('LOOPING', 'Tap PLAY to start the loop');
+  }
 }
 
 function clearLoop() {
@@ -132,6 +188,8 @@ function clearLoop() {
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audio = null;
   audioUrl = null;
+  stopSource();
+  audioBuffer = null;
   duration = 0;
   playButton.classList.remove('is-playing');
   playIcon.textContent = '▶';
