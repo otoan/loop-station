@@ -25,11 +25,8 @@
       <div class="meter-row"><span id="trackName">NO LOOP CAPTURED</span><span id="timeDisplay">00:00</span></div>
       <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
 
-      <div id="trackList" class="track-list" aria-live="polite"></div>
-
       <button id="recordButton" class="record-button" type="button" aria-label="録音を開始">
         <span class="button-ring"></span><span id="recordIcon" class="record-icon"></span>
-        <span class="countdown-bar" aria-hidden="true"><span id="countdownFill"></span></span>
         <span id="buttonLabel" class="button-label">TAP TO<br>RECORD</span>
       </button>
 
@@ -38,12 +35,10 @@
         <div class="recording-note"><span class="pulse"></span><span id="hint">Microphone ready</span></div>
         <button id="playButton" class="utility-button" type="button" disabled><span id="playIcon" class="play-icon">▶</span><span id="playLabel">PLAY</span></button>
       </div>
-      <label class="count-in-toggle"><input id="countInToggle" type="checkbox" checked><span class="toggle-track"><span class="toggle-thumb"></span></span><span>2 SEC COUNT-IN</span></label>
-      <button id="addTrackButton" class="add-track-button" type="button" disabled>+ ADD TRACK</button>
     </section>
 
     <footer class="footer"><span>LOCAL AUDIO</span><span>•</span><span>NO UPLOAD</span><span>•</span><span>MADE TO PLAY</span></footer>
   </main>
-  <script src="app.js"></script>
+  <script src="simple-app.js"></script>
 </body>
 </html>
