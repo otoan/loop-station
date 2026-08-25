@@ -116,7 +116,9 @@ async function startRecording() {
     return;
   }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    if (!stream || stream.getTracks().some(track => track.readyState === 'ended')) {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    }
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
     recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     chunks = [];
@@ -146,8 +148,6 @@ function stopRecording() {
 }
 
 async function finishRecording() {
-  stream?.getTracks().forEach(track => track.stop());
-  stream = null;
   const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
   playbackGeneration += 1;
   stopSource();
@@ -188,6 +188,8 @@ function clearLoop() {
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audio = null;
   audioUrl = null;
+  stream?.getTracks().forEach(track => track.stop());
+  stream = null;
   stopSource();
   audioBuffer = null;
   duration = 0;
