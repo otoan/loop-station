@@ -61,6 +61,22 @@ function stopSource() {
   source = null;
 }
 
+function createSeamlessBuffer(buffer) {
+  const fadeFrames = Math.min(Math.floor(buffer.sampleRate * 0.04), Math.floor(buffer.length / 2));
+  const seamless = audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const original = buffer.getChannelData(channel);
+    const output = seamless.getChannelData(channel);
+    output.set(original);
+    for (let frame = 0; frame < fadeFrames; frame += 1) {
+      const fade = frame / fadeFrames;
+      const endFrame = buffer.length - fadeFrames + frame;
+      output[endFrame] = original[endFrame] * (1 - fade) + original[frame] * fade;
+    }
+  }
+  return seamless;
+}
+
 async function playLoop() {
   if (!audio) return;
   const generation = playbackGeneration;
@@ -199,7 +215,8 @@ async function finishRecording() {
   recordButton.setAttribute('aria-label', '録音をやり直す');
   try {
     audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    audioBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    const decodedBuffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+    audioBuffer = createSeamlessBuffer(decodedBuffer);
     duration = audioBuffer.duration;
     audio.pause();
     playOffset = 0;
