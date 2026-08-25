@@ -37,9 +37,8 @@ h1 em { color: var(--accent); font-style: normal; }
 .play-icon { font-size: 12px; }
 .recording-note { color: var(--muted); display: flex; align-items: center; gap: 9px; font-size: 12px; }
 .footer { margin-top: auto; border-top: 1px solid var(--line); padding-top: 18px; display: flex; gap: 14px; color: #59625c; font: 10px 'DM Mono', monospace; letter-spacing: .1em; }
-[data-state="recording"] .live-state, [data-state="saving"] .live-state { color: var(--hot); }
-[data-state="recording"] .live-dot, [data-state="saving"] .live-dot { background: var(--hot); }
+[data-state="recording"] .live-state { color: var(--hot); }
+[data-state="recording"] .live-dot { background: var(--hot); }
 @keyframes blink { 50% { opacity: .25; } }
 @keyframes breathe { 50% { box-shadow: 0 0 0 13px #ff725c10; } }
-@keyframes countdown-fill { to { width: 100%; } }
 @media (max-width: 540px) { .app-shell { width: min(100% - 28px, 980px); padding-top: 18px; } .hero { padding-top: 65px; } .record-button { margin-top: 50px; } .recording-note { font-size: 10px; } .footer { font-size: 8px; gap: 8px; } }

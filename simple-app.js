@@ -16,15 +16,9 @@ let chunks = [];
 let stream;
 let audio;
 let audioUrl;
-let audioContext;
-let audioBuffer;
-let source;
 let startedAt = 0;
 let duration = 0;
 let playing = false;
-let playOffset = 0;
-let playStartedAt = 0;
-let progressFrame;
 
 function setState(state, message) {
   stateLabel.textContent = state;
@@ -38,52 +32,30 @@ function formatTime(seconds) {
 }
 
 function currentPosition() {
-  if (!playing || !audioBuffer) return playOffset;
-  return (audioContext.currentTime - playStartedAt + playOffset) % audioBuffer.duration;
+  return audio?.currentTime || 0;
 }
 
 function updateProgress() {
-  if (duration) {
-    progressBar.style.width = `${(currentPosition() / duration) * 100}%`;
-    timeDisplay.textContent = formatTime(currentPosition());
-  }
-  if (playing) progressFrame = requestAnimationFrame(updateProgress);
+  if (!audio || !duration) return;
+  progressBar.style.width = `${(audio.currentTime / duration) * 100}%`;
+  timeDisplay.textContent = formatTime(audio.currentTime);
 }
 
-function stopSource() {
-  if (!source) return;
-  try { source.stop(); } catch {}
-  source = null;
-}
-
-async function playLoop() {
-  if (!audioBuffer) {
-    audio?.play().catch(() => {});
-    return;
-  }
-  audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-  await audioContext.resume();
-  stopSource();
-  source = audioContext.createBufferSource();
-  source.buffer = audioBuffer;
-  source.loop = true;
-  source.connect(audioContext.destination);
-  playStartedAt = audioContext.currentTime;
-  source.start(0, playOffset % audioBuffer.duration);
-  playing = true;
-  playButton.classList.add('is-playing');
-  playIcon.textContent = 'Ⅱ';
-  playLabel.textContent = 'PAUSE';
-  setState('LOOPING', 'Loop is playing');
-  updateProgress();
+function playLoop() {
+  if (!audio) return;
+  audio.play().then(() => {
+    playing = true;
+    playButton.classList.add('is-playing');
+    playIcon.textContent = 'Ⅱ';
+    playLabel.textContent = 'PAUSE';
+    setState('LOOPING', 'Loop is playing');
+  }).catch(() => setState('READY', 'Tap PLAY to start the loop'));
 }
 
 function pauseLoop() {
-  if (!playing) return;
-  playOffset = currentPosition();
+  if (!audio) return;
+  audio.pause();
   playing = false;
-  stopSource();
-  cancelAnimationFrame(progressFrame);
   playButton.classList.remove('is-playing');
   playIcon.textContent = '▶';
   playLabel.textContent = 'PLAY';
@@ -134,27 +106,16 @@ async function finishRecording() {
   audioUrl = URL.createObjectURL(blob);
   audio = new Audio(audioUrl);
   audio.loop = true;
-  audio.play().catch(() => {});
-  try {
-    audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
-    const decoded = await audioContext.decodeAudioData(await blob.arrayBuffer());
-    const frames = Math.max(1, Math.min(decoded.length, Math.floor(duration * decoded.sampleRate)));
-    audioBuffer = audioContext.createBuffer(decoded.numberOfChannels, frames, decoded.sampleRate);
-    for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
-      audioBuffer.copyToChannel(decoded.getChannelData(channel).subarray(0, frames), channel);
-    }
-    audio.pause();
-    playOffset = 0;
-    trackName.textContent = `LOOP 01 / ${formatTime(duration)}`;
-    timeDisplay.textContent = formatTime(duration);
-    clearButton.disabled = false;
-    playButton.disabled = false;
-    buttonLabel.innerHTML = 'TAP TO<br>RECORD AGAIN';
-    recordButton.setAttribute('aria-label', '録音をやり直す');
-    await playLoop();
-  } catch {
-    setState('ERROR', 'Could not prepare your loop');
-  }
+  audio.addEventListener('timeupdate', updateProgress);
+  audio.addEventListener('play', () => { playing = true; });
+  audio.addEventListener('pause', () => { playing = false; });
+  trackName.textContent = `LOOP 01 / ${formatTime(duration)}`;
+  timeDisplay.textContent = formatTime(duration);
+  clearButton.disabled = false;
+  playButton.disabled = false;
+  buttonLabel.innerHTML = 'TAP TO<br>RECORD AGAIN';
+  recordButton.setAttribute('aria-label', '録音をやり直す');
+  playLoop();
 }
 
 function clearLoop() {
@@ -163,9 +124,7 @@ function clearLoop() {
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audio = null;
   audioUrl = null;
-  audioBuffer = null;
   duration = 0;
-  playOffset = 0;
   progressBar.style.width = '0%';
   timeDisplay.textContent = '00:00';
   trackName.textContent = 'NO LOOP CAPTURED';
