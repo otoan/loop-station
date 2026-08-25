@@ -19,6 +19,7 @@ let audioUrl;
 let startedAt = 0;
 let duration = 0;
 let playing = false;
+let playbackGeneration = 0;
 
 function setState(state, message) {
   stateLabel.textContent = state;
@@ -43,7 +44,9 @@ function updateProgress() {
 
 function playLoop() {
   if (!audio) return;
+  const generation = playbackGeneration;
   audio.play().then(() => {
+    if (!audio || generation !== playbackGeneration) return;
     playing = true;
     playButton.classList.add('is-playing');
     playIcon.textContent = 'Ⅱ';
@@ -119,12 +122,20 @@ async function finishRecording() {
 }
 
 function clearLoop() {
-  pauseLoop();
-  audio?.pause();
+  playbackGeneration += 1;
+  playing = false;
+  if (audio) {
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+  }
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audio = null;
   audioUrl = null;
   duration = 0;
+  playButton.classList.remove('is-playing');
+  playIcon.textContent = '▶';
+  playLabel.textContent = 'PLAY';
   progressBar.style.width = '0%';
   timeDisplay.textContent = '00:00';
   trackName.textContent = 'NO LOOP CAPTURED';
