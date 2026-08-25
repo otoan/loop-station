@@ -20,6 +20,7 @@ let audioUrl;
 let audioContext;
 let audioBuffer;
 let source;
+let outputGain;
 let startedAt = 0;
 let duration = 0;
 let playing = false;
@@ -71,7 +72,9 @@ async function playLoop() {
     source = audioContext.createBufferSource();
     source.buffer = audioBuffer;
     source.loop = true;
-    source.connect(audioContext.destination);
+    outputGain ||= audioContext.createGain();
+    outputGain.gain.value = 1.25;
+    source.connect(outputGain).connect(audioContext.destination);
     playStartedAt = audioContext.currentTime;
     source.start(0, playOffset % audioBuffer.duration);
     playing = true;
@@ -121,6 +124,7 @@ async function startRecording() {
   try {
     if (!stream || stream.getTracks().some(track => track.readyState === 'ended')) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      stream.getAudioTracks().forEach(track => { track.contentHint = 'music'; });
     }
     countingDown = true;
     recordButton.classList.add('is-counting-down');
@@ -133,7 +137,7 @@ async function startRecording() {
     recordButton.classList.remove('is-counting-down');
     countdownFill.style.width = '0%';
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 192000 } : { audioBitsPerSecond: 192000 });
     chunks = [];
     recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
     recorder.addEventListener('stop', finishRecording, { once: true });
