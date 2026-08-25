@@ -3,6 +3,7 @@ const clearButton = document.getElementById('clearButton');
 const playButton = document.getElementById('playButton');
 const buttonLabel = document.getElementById('buttonLabel');
 const recordIcon = document.getElementById('recordIcon');
+const countdownFill = document.getElementById('countdownFill');
 const playIcon = document.getElementById('playIcon');
 const playLabel = document.getElementById('playLabel');
 const stateLabel = document.getElementById('stateLabel');
@@ -25,6 +26,8 @@ let playing = false;
 let playbackGeneration = 0;
 let playOffset = 0;
 let playStartedAt = 0;
+let countdownTimer;
+let countingDown = false;
 
 function setState(state, message) {
   stateLabel.textContent = state;
@@ -110,7 +113,7 @@ function pauseLoop() {
 }
 
 async function startRecording() {
-  if (recorder?.state === 'recording') return;
+  if (countingDown || recorder?.state === 'recording') return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     setState('ERROR', 'This browser cannot record audio');
     return;
@@ -119,6 +122,16 @@ async function startRecording() {
     if (!stream || stream.getTracks().some(track => track.readyState === 'ended')) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     }
+    countingDown = true;
+    recordButton.classList.add('is-counting-down');
+    countdownFill.style.width = '0%';
+    buttonLabel.textContent = 'GET READY';
+    setState('WAITING', 'Recording starts in 2 seconds');
+    await new Promise(resolve => { countdownTimer = setTimeout(resolve, 2000); });
+    if (!countingDown) return;
+    countingDown = false;
+    recordButton.classList.remove('is-counting-down');
+    countdownFill.style.width = '0%';
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(MediaRecorder.isTypeSupported) || '';
     recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     chunks = [];
@@ -132,12 +145,27 @@ async function startRecording() {
     recordButton.setAttribute('aria-label', '録音を停止');
     setState('RECORDING', 'Capturing your take');
   } catch (error) {
+    countingDown = false;
+    clearTimeout(countdownTimer);
+    recordButton.classList.remove('is-counting-down');
+    countdownFill.style.width = '0%';
     stream?.getTracks().forEach(track => track.stop());
     setState('ERROR', error.name === 'NotAllowedError' ? 'Allow microphone access to record' : 'Microphone unavailable');
   }
 }
 
 function stopRecording() {
+  if (countingDown) {
+    clearTimeout(countdownTimer);
+    countingDown = false;
+    stream?.getTracks().forEach(track => track.stop());
+    stream = null;
+    recordButton.classList.remove('is-counting-down');
+    countdownFill.style.width = '0%';
+    buttonLabel.innerHTML = 'TAP TO<br>RECORD';
+    setState('READY', 'Microphone ready');
+    return;
+  }
   if (!recorder || recorder.state !== 'recording') return;
   duration = (performance.now() - startedAt) / 1000;
   recorder.stop();
@@ -206,6 +234,6 @@ function clearLoop() {
   setState('READY', 'Microphone ready');
 }
 
-recordButton.addEventListener('click', () => recorder?.state === 'recording' ? stopRecording() : startRecording());
+recordButton.addEventListener('click', () => recorder?.state === 'recording' || countingDown ? stopRecording() : startRecording());
 playButton.addEventListener('click', () => playing ? pauseLoop() : playLoop());
 clearButton.addEventListener('click', clearLoop);
