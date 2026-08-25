@@ -34,6 +34,7 @@ let timerId;
 let countdownTimerId;
 let isCountingDown = false;
 let isPlaying = false;
+let isStarting = false;
 
 function createAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -119,24 +120,27 @@ function setState(state, message) {
 }
 
 async function startRecording() {
-  if (isCountingDown || mediaRecorder?.state === 'recording') return;
+  if (isStarting || isCountingDown || mediaRecorder?.state === 'recording') return;
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !(window.AudioContext || window.webkitAudioContext)) {
     setState('ERROR', 'This browser cannot record audio');
     return;
   }
   recordingMode = tracks.length ? 'overdub' : 'base';
+  isStarting = true;
   try {
     pendingStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    isCountingDown = true;
+    isStarting = false;
     if (countInToggle.checked) {
+      isCountingDown = true;
       recordButton.classList.add('is-counting-down');
       setState('WAITING', recordingMode === 'base' ? 'Recording starts in 2 seconds' : 'Syncing to next loop');
       buttonLabel.textContent = 'GET READY';
       countdownFill.style.width = '0%';
       await new Promise(resolve => { countdownTimerId = setTimeout(resolve, 2000); });
+      if (!isCountingDown) return;
     }
-    if (!isCountingDown) return;
     if (recordingMode === 'overdub') {
+      isCountingDown = true;
       if (!isPlaying) await playLoop();
       const wait = (loopDuration - getLoopPosition()) * 1000;
       setState('WAITING', 'Starting on the beat');
@@ -163,6 +167,7 @@ async function startRecording() {
     recordButton.setAttribute('aria-label', '録音を停止');
     setState('RECORDING', recordingMode === 'base' ? 'Capturing rhythm' : 'Capturing new layer');
   } catch (error) {
+    isStarting = false;
     pendingStream?.getTracks().forEach(track => track.stop());
     pendingStream = null;
     isCountingDown = false;
