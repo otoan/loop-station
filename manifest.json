@@ -1,6 +1,6 @@
 {
-  "name": "Loop Station",
-  "short_name": "Loop Station",
+  "name": "Loop Forge",
+  "short_name": "Loop Forge",
   "description": "Tap, record, and build your loop.",
   "start_url": "/",
   "display": "standalone",

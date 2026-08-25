@@ -31,6 +31,12 @@ h1 em { color: var(--accent); font-style: normal; }
 .track-delete { font: 22px/1 'Space Grotesk'; }
 .add-track-button { width: 100%; margin-top: 20px; border: 1px solid var(--line); background: transparent; color: var(--accent); cursor: pointer; padding: 12px; font: 11px 'DM Mono', monospace; letter-spacing: .14em; }
 .add-track-button:disabled { opacity: .25; cursor: default; }
+.count-in-toggle { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; color: var(--muted); cursor: pointer; font: 10px 'DM Mono', monospace; letter-spacing: .12em; }
+.count-in-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-track { position: relative; width: 32px; height: 17px; border: 1px solid var(--line); border-radius: 20px; background: #171d19; transition: background .2s, border-color .2s; }
+.toggle-thumb { position: absolute; top: 3px; left: 3px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
+.count-in-toggle input:checked + .toggle-track { border-color: var(--accent); background: #29351e; }
+.count-in-toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(15px); background: var(--accent); }
 .record-button { position: relative; display: grid; place-items: center; width: min(54vw, 310px); aspect-ratio: 1; margin: 58px auto 48px; border: 1px solid #47534b; border-radius: 50%; background: #171d19; cursor: pointer; transition: transform .2s, border-color .2s, background .2s; }
 .record-button:hover { transform: scale(1.025); border-color: var(--accent); }
 .record-button:active { transform: scale(.98); }

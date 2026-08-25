@@ -2,6 +2,7 @@ const recordButton = document.getElementById('recordButton');
 const clearButton = document.getElementById('clearButton');
 const playButton = document.getElementById('playButton');
 const addTrackButton = document.getElementById('addTrackButton');
+const countInToggle = document.getElementById('countInToggle');
 const trackList = document.getElementById('trackList');
 const buttonLabel = document.getElementById('buttonLabel');
 const recordIcon = document.getElementById('recordIcon');
@@ -125,11 +126,13 @@ async function startRecording() {
   try {
     pendingStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     isCountingDown = true;
-    recordButton.classList.add('is-counting-down');
-    setState('WAITING', recordingMode === 'base' ? 'Recording starts in 2 seconds' : 'Syncing to next loop');
-    buttonLabel.textContent = 'GET READY';
-    countdownFill.style.width = '0%';
-    await new Promise(resolve => { countdownTimerId = setTimeout(resolve, 2000); });
+    if (countInToggle.checked) {
+      recordButton.classList.add('is-counting-down');
+      setState('WAITING', recordingMode === 'base' ? 'Recording starts in 2 seconds' : 'Syncing to next loop');
+      buttonLabel.textContent = 'GET READY';
+      countdownFill.style.width = '0%';
+      await new Promise(resolve => { countdownTimerId = setTimeout(resolve, 2000); });
+    }
     if (!isCountingDown) return;
     if (recordingMode === 'overdub') {
       if (!isPlaying) await playLoop();
